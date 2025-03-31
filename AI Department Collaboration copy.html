@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Department Collaboration Network</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+    }
+    svg {
+      width: 100vw;
+      height: 100vh;
+    }
+    .link {
+      stroke: #aaa;
+      stroke-opacity: 0.6;
+    }
+    /* Main node title */
+    .node text.main {
+      font-size: 12px;
+      pointer-events: none;
+    }
+    /* Node description text (increased to 10px) */
+    .node text.node-desc {
+      font-size: 10px;
+      pointer-events: none;
+      fill: #555;
+    }
+    .node circle {
+      fill: #69b3a2;
+    }
+    .tooltip {
+      position: absolute;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid #ccc;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+<svg></svg>
+<div class="tooltip"></div>
+<script>
+  // Data definition
+  const links = [
+    {source: "Security / Privacy", target: "Data Engineering", description: ""},
+    {source: "Security / Privacy", target: "Software", description: ""},
+    {source: "Machine Learning", target: "Product", description: ""},
+    {source: "Machine Learning", target: "Security / Privacy", description: "Handle data responsibly"},
+    {source: "Machine Learning", target: "Data Engineering", description: "Needs data clean"},
+    {source: "Machine Learning", target: "Infra / ML Ops", description: "Needs to deploy"},
+    {source: "Hardware & Systems", target: "Machine Learning", description: "Sensor edge data"},
+    {source: "Hardware & Systems", target: "Infra / ML Ops", description: "Scale hardware"},
+    {source: "Data Engineering", target: "Infra / ML Ops", description: "Manage data pipelines"},
+    {source: "Data Engineering", target: "Product", description: "Supports with data decision making"},
+    {source: "Data Engineering", target: "Software", description: "Feeds data"},
+    {source: "Infra / ML Ops", target: "Security / Privacy", description: "Secure pipeline"},
+    {source: "Software", target: "Product", description: "Delivers final product"},
+    {source: "Software", target: "UX - Human/AI Interaction", description: "Works closely, makes product usable"},
+    {source: "Software", target: "Infra / ML Ops", description: ""},
+    {source: "UX - Human/AI Interaction", target: "Software", description: "Makes AI outputs clean"},
+    {source: "UX - Human/AI Interaction", target: "Machine Learning", description: ""},
+    {source: "UX - Human/AI Interaction", target: "Product", description: "Shapes user experience"},
+    {source: "UX - Human/AI Interaction", target: "GTM", description: "Translates features into benefits"},
+    {source: "GTM", target: "Software", description: "Translates product into messaging"},
+    {source: "GTM", target: "Product", description: "Needs to understand to commercialise"},
+    {source: "Product", target: "GTM", description: "Gathers feedback from"},
+    {source: "Product", target: "Machine Learning", description: ""},
+    {source: "Ethics & Governance", target: "UX - Human/AI Interaction", description: ""},
+    {source: "Ethics & Governance", target: "Product", description: ""},
+    {source: "Ethics & Governance", target: "Machine Learning", description: ""},
+    {source: "Ethics & Governance", target: "Security / Privacy", description: ""}
+  ];
+  
+  // Create nodes array from unique department names.
+  const nodes = Array.from(new Set(links.flatMap(l => [l.source, l.target])), id => ({ id }));
+  
+  const svg = d3.select("svg");
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const tooltip = d3.select(".tooltip");
+  
+  // Set up the simulation with a collision force.
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(150))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collide", d3.forceCollide().radius(25));
+  
+  // Draw links.
+  const link = svg.append("g")
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("class", "link")
+    .attr("stroke-width", 1.5);
+  
+  // Draw nodes.
+  const node = svg.append("g")
+    .selectAll("g")
+    .data(nodes)
+    .join("g")
+    .attr("class", "node")
+    .call(drag(simulation));
+  
+  // Append circle.
+  node.append("circle")
+    .attr("r", 8);
+  
+  // Append main text (node title).
+  node.append("text")
+    .attr("class", "main")
+    .attr("x", 12)
+    .attr("y", 4)
+    .text(d => d.id);
+  
+  // Append description text element (initially empty) beneath the main title.
+  node.append("text")
+    .attr("class", "node-desc")
+    .attr("x", 12)
+    .attr("y", 16)
+    .text("");
+  
+  // Node hover events.
+  node.on("mouseover", function(event, d) {
+      tooltip.style("opacity", 1).html(d.id);
+      
+      // Get outbound links where the hovered node is the source.
+      const outbound = links.filter(l => {
+          const s = (typeof l.source === "object") ? l.source.id : l.source;
+          return s === d.id;
+      });
+      // Gather the set of target node IDs.
+      const outboundTargets = outbound.map(l => (typeof l.target === "object") ? l.target.id : l.target);
+      
+      // For each node, if it is a target of an outbound link, update its description text.
+      node.each(function(nd) {
+          const selection = d3.select(this);
+          if (outboundTargets.includes(nd.id)) {
+              // Get matching outbound links for this target.
+              const matchingLinks = outbound.filter(l => {
+                  const t = (typeof l.target === "object") ? l.target.id : l.target;
+                  return t === nd.id;
+              });
+              // Combine descriptions.
+              const desc = matchingLinks.map(l => {
+                  const t = (typeof l.target === "object") ? l.target.id : l.target;
+                  if(l.description && l.description.trim() !== ""){
+                      return "works with " + t + " to " + l.description.toLowerCase() + ".";
+                  } else {
+                      return "works with " + t + ".";
+                  }
+              }).join(" ");
+              selection.select("text.node-desc").text(desc);
+          } else {
+              selection.select("text.node-desc").text("");
+          }
+      });
+      
+      // Fade unrelated nodes and links.
+      node.transition().duration(300).style("opacity", nd => {
+          return (nd.id === d.id || outboundTargets.includes(nd.id)) ? 1 : 0.2;
+      });
+      
+      link.transition().duration(300).style("opacity", l => {
+          const s = (typeof l.source === "object") ? l.source.id : l.source;
+          return s === d.id ? 1 : 0.1;
+      });
+      
+  }).on("mousemove", function(event) {
+      tooltip.style("left", (event.pageX + 10) + "px")
+             .style("top", (event.pageY + 10) + "px");
+  }).on("mouseout", function() {
+      tooltip.style("opacity", 0);
+      // Clear all node descriptions.
+      node.select("text.node-desc").text("");
+      node.transition().duration(300).style("opacity", 1);
+      link.transition().duration(300).style("opacity", 1);
+  });
+  
+  // Update positions on each simulation tick.
+  simulation.on("tick", () => {
+      // Update link positions.
+      link.attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+      
+      // Update node positions.
+      node.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+  
+  // Drag functions.
+  function drag(simulation) {
+      function dragstarted(event) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          event.subject.fx = event.subject.x;
+          event.subject.fy = event.subject.y;
+      }
+      function dragged(event) {
+          event.subject.fx = event.x;
+          event.subject.fy = event.y;
+      }
+      function dragended(event) {
+          if (!event.active) simulation.alphaTarget(0);
+          event.subject.fx = null;
+          event.subject.fy = null;
+      }
+      return d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended);
+  }
+</script>
+</body>
+</html>
